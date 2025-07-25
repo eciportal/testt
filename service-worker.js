@@ -59,3 +59,38 @@ self.addEventListener('activate', event => {
     })
   );
 });
+
+// Listener for push events (from a push server, not used in this client-only version)
+self.addEventListener('push', event => {
+  const data = event.data ? event.data.json() : {};
+  const title = data.title || 'New Announcement';
+  const options = {
+    body: data.body || 'Check the app for new updates!',
+    icon: 'https://placehold.co/192x192/4f46e5/ffffff?text=E',
+    tag: 'announcement'
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// Listener for notification clicks
+self.addEventListener('notificationclick', event => {
+  event.notification.close(); // Close the notification
+
+  // This looks for an open window with the app's URL and focuses it.
+  event.waitUntil(clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true
+  }).then(clientList => {
+    // If a window is already open, focus it.
+    for (const client of clientList) {
+      // Note: Adjust the URL if your app isn't at the root.
+      if ('focus' in client) {
+        return client.focus();
+      }
+    }
+    // Otherwise, open a new window.
+    if (clients.openWindow) {
+      return clients.openWindow('/');
+    }
+  }));
+});
