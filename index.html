@@ -540,12 +540,12 @@
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 // We register the PWA service worker first
-                navigator.serviceWorker.register('./service-worker.js')
+                navigator.serviceWorker.register('./firebase-messaging-sw.js')
                     .then(registration => {
-                        console.log('PWA ServiceWorker registration successful with scope: ', registration.scope);
+                        console.log('FCM ServiceWorker registration successful with scope: ', registration.scope);
                     })
                     .catch(err => {
-                        console.log('PWA ServiceWorker registration failed: ', err);
+                        console.log('FCM ServiceWorker registration failed: ', err);
                     });
             });
         }
@@ -1199,7 +1199,8 @@
 
                 // Request notification permission and get FCM token after successful login
                 requestNotificationPermission();
-                // We no longer need the onSnapshot listener here, as the Cloud Function will handle it.
+                // Setup the real-time listener to display announcements on the page
+                setupAnnouncementsListener();
             }
 
             function updateUIAfterLogout() {
@@ -1241,7 +1242,7 @@
                 renderLanguage(currentLanguage);
             }
 
-            // This function is no longer needed for notifications, but we can keep it for displaying announcements on the page
+            // This function now only handles displaying announcements on the page.
             function setupAnnouncementsListener() {
                 const container = document.getElementById('announcements-container');
                 const announcementsRef = collection(db, "announcements");
