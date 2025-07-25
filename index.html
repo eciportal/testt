@@ -1133,10 +1133,17 @@
                 
                 // Dashboard Tab switching logic
                 const tabButtons = document.querySelectorAll('.dashboard-tab-btn');
-                const tabContents = document.querySelectorAll('.dashboard-tab-content');
-
                 tabButtons.forEach(button => {
                     button.addEventListener('click', () => {
+                        const tabId = button.getAttribute('data-tab');
+                        
+                        // If the announcements tab is clicked, update the last viewed time
+                        if (tabId === 'announcements') {
+                            localStorage.setItem('lastViewedAnnouncements', new Date().getTime());
+                            // Hide the badge immediately on click
+                            document.getElementById('announcements-badge').classList.add('hidden');
+                        }
+
                         tabButtons.forEach(btn => {
                             btn.classList.remove('border-indigo-500', 'text-indigo-600');
                             btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
@@ -1144,8 +1151,8 @@
                         button.classList.add('border-indigo-500', 'text-indigo-600');
                         button.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300');
 
+                        const tabContents = document.querySelectorAll('.dashboard-tab-content');
                         tabContents.forEach(content => content.classList.remove('active'));
-                        const tabId = button.getAttribute('data-tab');
                         document.getElementById(`tab-content-${tabId}`).classList.add('active');
                     });
                 });
@@ -1242,7 +1249,7 @@
                 renderLanguage(currentLanguage);
             }
 
-            // This function now only handles displaying announcements on the page.
+            // This function handles displaying announcements and the "New" badge.
             function setupAnnouncementsListener() {
                 const container = document.getElementById('announcements-container');
                 const announcementsRef = collection(db, "announcements");
@@ -1251,12 +1258,31 @@
                 if (announcementsListener) announcementsListener();
 
                 announcementsListener = onSnapshot(q, (querySnapshot) => {
-                    container.innerHTML = '';
+                    let hasNewAnnouncements = false;
+                    const lastViewed = localStorage.getItem('lastViewedAnnouncements') || 0;
+
                     const announcements = [];
-                    querySnapshot.forEach(doc => announcements.push({ id: doc.id, ...doc.data() }));
+                    querySnapshot.forEach(doc => {
+                        const announcement = { id: doc.id, ...doc.data() };
+                        announcements.push(announcement);
+                        // Check if announcement is newer than the last time the user viewed the page
+                        if (announcement.postDate && announcement.postDate.toMillis() > lastViewed) {
+                            hasNewAnnouncements = true;
+                        }
+                    });
                     
                     announcements.sort((a, b) => (b.postDate?.toMillis() || 0) - (a.postDate?.toMillis() || 0));
 
+                    // Update the badge visibility
+                    const badge = document.getElementById('announcements-badge');
+                    if (hasNewAnnouncements) {
+                        badge.classList.remove('hidden');
+                    } else {
+                        badge.classList.add('hidden');
+                    }
+
+                    // Render the announcements list
+                    container.innerHTML = '';
                     if (announcements.length === 0) {
                         container.innerHTML = `<p data-lang-key="announcements_no_data">${translations[currentLanguage].announcements_no_data}</p>`;
                     } else {
