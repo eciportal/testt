@@ -1150,6 +1150,20 @@
                 document.getElementById('generate-test-btn').addEventListener('click', generateTest);
             }
 
+            // --- Notification Permission ---
+            async function requestNotificationPermission() {
+                if (!('Notification' in window)) {
+                    console.log("This browser does not support desktop notification");
+                    return;
+                }
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    console.log('Notification permission granted.');
+                } else {
+                    console.log('Notification permission denied.');
+                }
+            }
+
             function updateUIAfterLogin() {
                 document.getElementById('auth-links-desktop').classList.add('hidden');
                 document.getElementById('user-links-desktop').classList.remove('hidden');
@@ -1158,6 +1172,9 @@
                 document.getElementById('auth-links-mobile').classList.add('hidden');
                 document.getElementById('user-links-mobile').classList.remove('hidden');
                 document.getElementById('welcome-user-mobile').textContent = `${translations[currentLanguage].dashboard_welcome} ${currentStudent.name}`;
+
+                // Request notification permission after successful login
+                requestNotificationPermission();
             }
 
             function updateUIAfterLogout() {
@@ -1214,7 +1231,7 @@
                         container.innerHTML = '';
                         const announcements = [];
                         querySnapshot.forEach(doc => {
-                            const announcement = doc.data();
+                            const announcement = { id: doc.id, ...doc.data() };
                             announcements.push(announcement);
                             if (announcement.postDate && announcement.postDate.toDate().getTime() > twentyFourHoursAgo) {
                                 hasNewAnnouncements = true;
@@ -1226,6 +1243,24 @@
                             const timeB = b.postDate && b.postDate.toMillis ? b.postDate.toMillis() : 0;
                             return timeB - timeA;
                         });
+
+                        // --- New Notification Logic ---
+                        if (announcements.length > 0) {
+                            const latestAnnouncement = announcements[0];
+                            const lastNotifiedTimestamp = localStorage.getItem('lastNotifiedAnnouncementTimestamp') || 0;
+                            const latestTimestamp = latestAnnouncement.postDate.toMillis();
+
+                            if (latestTimestamp > lastNotifiedTimestamp && Notification.permission === 'granted') {
+                                navigator.serviceWorker.ready.then(registration => {
+                                    registration.showNotification(latestAnnouncement.title, {
+                                        body: latestAnnouncement.message,
+                                        icon: 'https://placehold.co/192x192/4f46e5/ffffff?text=E',
+                                        tag: latestAnnouncement.id // Tag prevents duplicate notifications for the same announcement
+                                    });
+                                });
+                                localStorage.setItem('lastNotifiedAnnouncementTimestamp', latestTimestamp);
+                            }
+                        }
 
                         announcements.forEach(announcement => {
                             if (announcement.postDate && typeof announcement.postDate.toDate === 'function') {
