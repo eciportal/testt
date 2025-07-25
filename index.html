@@ -552,7 +552,7 @@
         // --- Firebase Imports ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
-        import { getFirestore, doc, getDoc, collection, query, where, getDocs, updateDoc, getCountFromServer, Timestamp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, collection, query, where, getDocs, onSnapshot, updateDoc, getCountFromServer, Timestamp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
 
         // --- Language Data ---
         const translations = {
@@ -770,6 +770,7 @@
         let currentLanguage = 'en';
         let currentTestQuestions = [];
         let deferredPrompt; // For PWA install prompt
+        let announcementsListener = null; // To hold the unsubscribe function for the real-time listener
         
         document.addEventListener('DOMContentLoaded', () => {
             // --- PWA: Capture the install prompt ---
@@ -895,7 +896,7 @@
                         updateUIAfterLogin();
                         navigateTo('dashboard');
                         renderDashboard();
-                        renderAnnouncements();
+                        setupAnnouncementsListener(); // Start listening for announcements
                         renderAttendance();
                     } else {
                         // If student was deleted from DB, log them out
@@ -962,7 +963,7 @@
                             updateUIAfterLogin();
                             navigateTo('dashboard');
                             renderDashboard();
-                            renderAnnouncements();
+                            setupAnnouncementsListener(); // Start listening for announcements
                             renderAttendance();
                         } else {
                             loginError.textContent = translations[currentLanguage].login_error_invalid;
@@ -1189,6 +1190,10 @@
                 currentStudent = null;
                 // Remove the persisted login from localStorage
                 localStorage.removeItem('currentStudent');
+                // Detach the real-time listener
+                if (announcementsListener) {
+                    announcementsListener();
+                }
                 updateUIAfterLogout();
                 document.getElementById('announcements-badge').classList.add('hidden');
                 navigateTo('home');
@@ -1212,15 +1217,16 @@
                 renderLanguage(currentLanguage);
             }
 
-            async function renderAnnouncements() {
+            function setupAnnouncementsListener() {
                 const container = document.getElementById('announcements-container');
-                container.innerHTML = `<div class="loader mx-auto"></div>`;
+                const announcementsRef = collection(db, "announcements");
+                const q = query(announcementsRef);
 
-                try {
-                    const announcementsRef = collection(db, "announcements");
-                    const q = query(announcementsRef);
-                    const querySnapshot = await getDocs(q);
+                if (announcementsListener) {
+                    announcementsListener(); // Unsubscribe from any previous listener
+                }
 
+                announcementsListener = onSnapshot(q, (querySnapshot) => {
                     const now = new Date();
                     const twentyFourHoursAgo = now.getTime() - (24 * 60 * 60 * 1000);
                     let hasNewAnnouncements = false;
@@ -1285,11 +1291,10 @@
                     } else {
                         badge.classList.add('hidden');
                     }
-
-                } catch (err) {
-                    console.error("Error fetching announcements:", err);
+                }, (error) => {
+                    console.error("Error with announcements listener:", error);
                     container.innerHTML = `<p class="text-red-500">Could not load announcements.</p>`;
-                }
+                });
             }
 
             async function renderAttendance() {
