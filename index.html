@@ -90,6 +90,10 @@
                          <span data-lang-key="nav_logout">Logout</span>
                      </button>
                 </div>
+                <!-- Install App Button -->
+                <button id="install-app-btn" class="hidden bg-green-500 text-white font-semibold px-4 py-2 rounded-lg hover:bg-green-600 transition duration-300">
+                    Install App
+                </button>
                 <!-- Language Switcher -->
                 <div class="flex items-center space-x-2 text-sm">
                     <span>EN</span>
@@ -548,7 +552,7 @@
         // --- Firebase Imports ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-app.js";
         import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-auth.js";
-        import { getFirestore, doc, collection, query, where, getDocs, updateDoc, getCountFromServer, Timestamp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
+        import { getFirestore, doc, getDoc, collection, query, where, getDocs, updateDoc, getCountFromServer, Timestamp } from "https://www.gstatic.com/firebasejs/12.0.0/firebase-firestore.js";
 
         // --- Language Data ---
         const translations = {
@@ -765,8 +769,33 @@
         let currentStudent = null;
         let currentLanguage = 'en';
         let currentTestQuestions = [];
+        let deferredPrompt; // For PWA install prompt
         
         document.addEventListener('DOMContentLoaded', () => {
+            // --- PWA: Capture the install prompt ---
+            const installBtn = document.getElementById('install-app-btn');
+            window.addEventListener('beforeinstallprompt', (e) => {
+                // Prevent the mini-infobar from appearing on mobile
+                e.preventDefault();
+                // Stash the event so it can be triggered later.
+                deferredPrompt = e;
+                // Update UI to notify the user they can install the PWA
+                installBtn.classList.remove('hidden');
+                console.log('`beforeinstallprompt` event was fired.');
+            });
+
+            installBtn.addEventListener('click', async () => {
+                // Hide the app provided install promotion
+                installBtn.classList.add('hidden');
+                // Show the install prompt
+                deferredPrompt.prompt();
+                // Wait for the user to respond to the prompt
+                const { outcome } = await deferredPrompt.userChoice;
+                console.log(`User response to the install prompt: ${outcome}`);
+                // We've used the prompt, and can't use it again, throw it away
+                deferredPrompt = null;
+            });
+
             // --- Firebase Configuration ---
             const firebaseConfig = {
                 apiKey: "AIzaSyDWkPt4hWE5hSx5XOZDo_0clnEzYnJMTnI",
@@ -853,6 +882,28 @@
                 }, 500);
             });
 
+            // --- Function to check for persisted login ---
+            async function checkForPersistedLogin() {
+                const persistedStudent = localStorage.getItem('currentStudent');
+                if (persistedStudent) {
+                    currentStudent = JSON.parse(persistedStudent);
+                    // Refresh student data from Firestore to ensure it's up-to-date
+                    const studentDocRef = doc(db, "students", currentStudent.docId);
+                    const studentDoc = await getDoc(studentDocRef);
+                    if (studentDoc.exists()) {
+                        currentStudent = { docId: studentDoc.id, ...studentDoc.data() };
+                        updateUIAfterLogin();
+                        navigateTo('dashboard');
+                        renderDashboard();
+                        renderAnnouncements();
+                        renderAttendance();
+                    } else {
+                        // If student was deleted from DB, log them out
+                        logout();
+                    }
+                }
+            }
+            
             // --- Firebase Initialization and Auth ---
             async function initializeAndAuth() {
                 try {
@@ -866,6 +917,7 @@
                         if (user) {
                             console.log("User is signed in:", user.uid);
                             setupEventListeners();
+                            checkForPersistedLogin(); // Check for saved login after auth is ready
                         }
                     });
                 } catch (error) {
@@ -903,6 +955,10 @@
                         if (!querySnapshot.empty) {
                             const studentDoc = querySnapshot.docs[0];
                             currentStudent = { docId: studentDoc.id, ...studentDoc.data() };
+                            
+                            // Persist login to localStorage
+                            localStorage.setItem('currentStudent', JSON.stringify(currentStudent));
+
                             updateUIAfterLogin();
                             navigateTo('dashboard');
                             renderDashboard();
@@ -1006,6 +1062,10 @@
                         await updateDoc(studentDocRef, profileData);
 
                         currentStudent = { ...currentStudent, ...profileData };
+                        
+                        // Persist new profile to localStorage
+                        localStorage.setItem('currentStudent', JSON.stringify(currentStudent));
+
                         updateUIAfterLogin();
                         navigateTo('dashboard');
                         renderDashboard();
@@ -1048,6 +1108,10 @@
                         const studentDocRef = doc(db, "students", currentStudent.docId);
                         await updateDoc(studentDocRef, updatedData);
                         currentStudent = { ...currentStudent, ...updatedData };
+
+                        // Update localStorage with new details
+                        localStorage.setItem('currentStudent', JSON.stringify(currentStudent));
+
                         navigateTo('dashboard');
                         renderDashboard();
                     } catch (err) {
@@ -1106,6 +1170,8 @@
 
             function logout() {
                 currentStudent = null;
+                // Remove the persisted login from localStorage
+                localStorage.removeItem('currentStudent');
                 updateUIAfterLogout();
                 document.getElementById('announcements-badge').classList.add('hidden');
                 navigateTo('home');
